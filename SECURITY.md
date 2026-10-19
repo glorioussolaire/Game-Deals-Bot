@@ -44,4 +44,6 @@ Cloudflare stores the bot token, private chat ID, price-feed API key, and genera
 
 The application trusts its OS user, authorized Cloudflare administrators, private KV, Telegram, and price providers. Origin checks cannot independently authenticate an ITAD redirect's eventual destination or provider catalog assignments. KV is not a distributed lock or an adversarially authenticated channel; acknowledged delivery followed by a failed checkpoint may be repeated. Dependency advisory checks cannot exclude undisclosed vulnerabilities.
 
-See [the application audit](docs/security-audit.md) for evidence and open items. Report vulnerabilities privately through GitHub's security reporting if enabled; never place real tokens or private chat IDs in public issues. Rotate credentials through their issuing services if compromise is confirmed.
+Manual review and regression tests covered recipient pairing, webhook authorization, destination checks, response limits, persisted state, FX validation, and local credential access. These checks do not constitute independent certification or provider/account penetration testing.
+
+Report vulnerabilities privately through GitHub's security reporting if enabled; never place real tokens or private chat IDs in public issues. Rotate credentials through their issuing services if compromise is confirmed.

@@ -7,14 +7,14 @@ Private Telegram alerts for discounted Steam games and wishlisted DLC, comparing
 - Reads your Steam wishlist automatically, including additions and removals.
 - Compares native Thai Steam prices with Steam-redeemable offers from IsThereAnyDeal's authorized retailers: Green Man Gaming, GamersGate, GameBillet, Fanatical, Gamesplanet, Humble Store, and other active feed shops.
 - Checks Fanatical's direct Thailand catalog and validated 2Game Thai products.
-- Sends the cheapest discounted offer per product in one logical digest. Large digests split at Telegram's size limit.
+- Sends the cheapest eligible offer per product when that offer is discounted, in one logical digest. Large digests split at Telegram's size limit.
 - Alerts on the first check, newly wishlisted discounts, later sales, and further price reductions. Unchanged offers and exchange-rate changes alone stay quiet.
 - Responds to `/deals` with all discounts from the latest saved hourly checks, even if you deleted Telegram chat history. This does not reset automatic alerts.
 - Shows source currency and estimated THB using dated ECB rates through Frankfurter.
 - Clearly marks **Thailand activation unverified** when regional eligibility is unknown. Explicit Thailand restrictions, non-Steam keys, bundles, substitute editions, conditional vouchers, and key resale marketplaces are excluded.
 - Preserves price history on failed reads, retries unsent digests, and reports persistent failures once rather than every hour.
 
-**Validation:** all 57 tests pass, including private command authorization, saved-list restoration, and delivery retries. A live preview compared 28 wishlist games. Hourly cloud execution and private delivery are confirmed; retailer rate limits can pause comparisons. See [validation results](docs/validation.md).
+**Validation:** all 57 tests pass, including private command authorization, saved-list restoration, and delivery retries. Hourly cloud execution and private delivery are confirmed; retailer rate limits can pause comparisons.
 
 ## Activate it
 
@@ -109,19 +109,12 @@ npm run benchmark
 
 The test suite covers matching and exclusions, cheapest-offer selection, price and FX changes, initial/later alerts, removal/re-addition, failures, retry checkpoints, safe formatting, and private access. `check:live` sends no Telegram messages; it explicitly reports authenticated ITAD prices as **not tested** until the key exists. `benchmark` measures local parsing/comparison/formatting, not Cloudflare's deployed CPU accounting.
 
-See [the specification](docs/spec.md), [validation results](docs/validation.md), and [project vocabulary](GLOSSARY.md).
+Verified on 19 October 2026: a live preview compared all 28 wishlist products, and a deployed `/deals` test restored the full saved list while leaving the production alert-history record unchanged. The owner also confirmed receiving the list after sending the command through Telegram. A complete cloud scan with every source available and its free-plan CPU consumption remain unverified.
 
-Read [the security policy](SECURITY.md) and [application audit](docs/security-audit.md) before using real credentials. Publication checks and local operating-system access checks protect different boundaries.
+Read [the security policy](SECURITY.md) before using real credentials. Publication checks and local operating-system access checks protect different boundaries.
 
 ## Repository and GitHub
 
 The repository contains `wrangler.example.jsonc` and empty `.dev.vars.example` as shareable templates. Real `wrangler.jsonc`, `.dev.vars`, delivery history, logs, build output, and dependencies are ignored. Keep local configuration when updating an existing deployment; replacing its KV namespace would start new notification history.
 
 GitHub Actions runs syntax checks, offline tests, and a dry-run Worker build on Node.js 22 and 24. CI requires no Telegram, IsThereAnyDeal, or Cloudflare credentials, sends no messages, and does not deploy. Action versions are pinned to commit hashes. Live source checks and deployment are explicit local commands.
-
-For a newly initialized local repository with its initial commit, create an empty GitHub repository, then set its URL and push:
-
-```powershell
-git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPOSITORY.git
-git push -u origin main
-```
