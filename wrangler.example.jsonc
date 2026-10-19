@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "telegram-wishlist-deals",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-18",
+  "workers_dev": false,
+  "preview_urls": false,
+  "triggers": { "crons": ["0 * * * *"] },
+  "kv_namespaces": [
+    { "binding": "DEALS_KV", "id": "REPLACE_WITH_KV_NAMESPACE_ID" }
+  ],
+  "vars": {
+    "STEAM_ID": "",
+    "COUNTRY": "TH",
+    "REFERENCE_COUNTRY": "US",
+    "ENABLE_FANATICAL": "true",
+    "ENABLE_2GAME": "true",
+    "FAILURE_NOTICE_AFTER": "3"
+  },
+  "observability": { "enabled": true, "head_sampling_rate": 1, "redact_query_string": true }
+}

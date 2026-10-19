@@ -1,0 +1,17 @@
+node_modules/
+.wrangler/
+dist/
+.data/
+# Account-specific configuration; commit wrangler.example.jsonc instead.
+wrangler.jsonc
+wrangler.local.*
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
+.env
+.env.*
+!.env.example
+*.log
+npm-cache/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,4 @@
+# Copy to .dev.vars, or run npm run configure. Never commit this file with real credentials.
+TELEGRAM_BOT_TOKEN=""
+TELEGRAM_CHAT_ID=""
+ITAD_API_KEY=""
