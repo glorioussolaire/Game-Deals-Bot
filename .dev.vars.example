@@ -2,5 +2,3 @@
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
 ITAD_API_KEY=""
-# Generated automatically during setup or deployment.
-TELEGRAM_WEBHOOK_SECRET=""

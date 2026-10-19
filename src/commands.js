@@ -1,4 +1,4 @@
-import { client, readText, SourceError } from "./http.js";
+import { client, SourceError } from "./http.js";
 import { readState, validateConfig } from "./monitor.js";
 import { cheapest, discounted, eligible } from "./engine.js";
 import { freshDate } from "./sources/fx.js";
@@ -9,8 +9,7 @@ export const COMMAND_PREFIX = "telegram-command-v1:";
 const RATE_KEY = "telegram-command-rate-v1";
 const HELP = "Send /deals to see all discounts from the latest saved hourly checks, including offers already alerted. " +
   "Each game shows its check time. Clearing Telegram chat history does not reset hourly alerts.\n\n" +
-  "Hourly alerts continue to report new discounts and further price drops.";
-const ACK = () => new Response("OK");
+  "Hourly alerts continue to report new discounts and further price drops. Commands are checked every minute.";
 let inFlight;
 
 export function savedDeals(state, now = Date.now()) {
@@ -54,13 +53,6 @@ export function savedDeals(state, now = Date.now()) {
   return messages;
 }
 
-function secretMatches(expected, provided) {
-  if (!/^[A-Za-z0-9_-]{32,256}$/.test(expected ?? "") || provided?.length !== expected.length) return false;
-  let difference = 0;
-  for (let i = 0; i < expected.length; i++) difference |= expected.charCodeAt(i) ^ provided.charCodeAt(i);
-  return difference === 0;
-}
-
 function privateCommand(update, env, now) {
   const message = update?.message;
   if (!Number.isSafeInteger(update?.update_id) || update.update_id < 0 ||
@@ -72,7 +64,7 @@ function privateCommand(update, env, now) {
   return message.text.match(/^\/(deals|start|help)(?:@[A-Za-z0-9_]{5,32})?\s*$/)?.[1] ?? null;
 }
 
-async function commandJob(update, command, env, { fetcher, now, wait }) {
+async function commandJob(update, command, env, { http, now, wait }) {
   validateConfig(env, true);
   const storage = paceStateStorage(env.DEALS_KV, wait ? { wait } : {});
   const key = COMMAND_PREFIX + update.update_id;
@@ -91,43 +83,28 @@ async function commandJob(update, command, env, { fetcher, now, wait }) {
     if (previous != null) {
       const timestamp = Number(previous);
       if (!Number.isSafeInteger(timestamp) || timestamp < 0 || timestamp > now) throw new SourceError("telegram_commands", "invalid_command_rate_state");
-      if (now - timestamp < 10000) return ACK();
+      if (now - timestamp < 10000) return;
     }
     const messages = command === "deals" ? savedDeals(await readState(storage, now), now) : [HELP];
     job = { messages, cursor: 0 };
     await storage.put(RATE_KEY, String(now), { expirationTtl: 60 });
     await storage.put(key, JSON.stringify(job), { expirationTtl: 86400 });
   }
-  const http = client(fetcher);
   while (job.cursor < job.messages.length) {
     await sendMessage(http, env, job.messages[job.cursor]);
     job.cursor++;
     await storage.put(key, JSON.stringify(job), { expirationTtl: 86400 });
   }
-  return ACK();
 }
 
-export async function handleTelegram(request, env, { fetcher = fetch, now = Date.now(), wait } = {}) {
-  if (new URL(request.url).pathname !== "/telegram" || request.method !== "POST" ||
-    !secretMatches(env?.TELEGRAM_WEBHOOK_SECRET, request.headers.get("X-Telegram-Bot-Api-Secret-Token"))) {
-    return new Response("Not found", { status: 404 });
-  }
-  if (request.headers.get("Content-Type")?.split(";")[0].trim().toLowerCase() !== "application/json") {
-    return new Response("Unsupported content type", { status: 415 });
-  }
-  let update;
-  try { update = JSON.parse(await readText("telegram_commands", request, 16384)); }
-  catch (error) { return new Response("Invalid update", { status: error.code === "response_too_large" ? 413 : 400 }); }
+// Called only with updates fetched directly from Telegram, never an HTTP body.
+export async function runCommand(update, env, { fetcher = fetch, http = client(fetcher), now = Date.now(), wait } = {}) {
   const command = privateCommand(update, env, now);
-  if (!command) return ACK();
-  // Telegram is configured for one webhook connection. Also serialize retries
-  // in this isolate; KV checkpoints are not a distributed exactly-once lock.
-  if (inFlight) return new Response("Retry later", { status: 503 });
-  const operation = commandJob(update, command, env, { fetcher, now, wait });
+  if (!command) return false;
+  // Serialize retries in this isolate; checkpoints are not a distributed lock.
+  if (inFlight) throw new SourceError("telegram_commands", "already_running");
+  const operation = commandJob(update, command, env, { http, now, wait });
   inFlight = operation;
-  try { return await operation; }
-  catch (error) {
-    console.error(JSON.stringify({ event: "telegram_command_failure", code: error.name === "SourceError" ? error.message : "unexpected_error" }));
-    return new Response("Retry later", { status: 503 });
-  } finally { if (inFlight === operation) inFlight = undefined; }
+  try { await operation; return true; }
+  finally { if (inFlight === operation) inFlight = undefined; }
 }

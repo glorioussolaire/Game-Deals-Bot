@@ -14,7 +14,7 @@ Private Telegram alerts for discounted Steam games and wishlisted DLC, comparing
 - Clearly marks **Thailand activation unverified** when regional eligibility is unknown. Explicit Thailand restrictions, non-Steam keys, bundles, substitute editions, conditional vouchers, and key resale marketplaces are excluded.
 - Preserves price history on failed reads, retries unsent digests, and reports persistent failures once rather than every hour.
 
-**Validation:** all 57 tests pass, including private command authorization, saved-list restoration, and delivery retries. Hourly cloud execution and private delivery are confirmed; retailer rate limits can pause comparisons.
+**Validation:** all 63 tests pass, including private command authorization, saved-list restoration, polling acknowledgements, and delivery retries. Hourly cloud execution and private delivery are confirmed; retailer rate limits can pause comparisons.
 
 ## Activate it
 
@@ -33,7 +33,9 @@ npm run configure
 
 On a fresh checkout, the setup command copies `wrangler.example.jsonc` to ignored `wrangler.jsonc` and asks for your public Steam wishlist URL or 17-digit Steam ID. It keeps existing local configuration intact. Steam vanity-name URLs are not supported; use the numeric profile URL.
 
-The command first checks local directory permissions, hides secret input, and verifies your bot. It prints a fresh setup link; open that link and press Start in your own private chat. Only a matching setup code can select the private recipient. It saves credentials atomically to ignored `.dev.vars`, without sending test messages. Existing command webhooks are temporarily suspended during re-pairing and restored afterward. For manual setup, copy `wrangler.example.jsonc` to `wrangler.jsonc`, set `vars.STEAM_ID`, and copy `.dev.vars.example` to `.dev.vars` before filling in the bot token, private chat ID, and API key. The webhook secret is generated automatically. Do not paste credentials into chat or commit them. See [security requirements](#security) if setup refuses unsafe directory permissions.
+The command first checks local directory permissions, hides secret input, and verifies your bot. It prints a fresh setup link; open that link and press Start in your own private chat. Only a matching setup code can select the private recipient. It saves credentials atomically to ignored `.dev.vars`, without sending test messages. For manual setup, copy `wrangler.example.jsonc` to `wrangler.jsonc`, set `vars.STEAM_ID`, and copy `.dev.vars.example` to `.dev.vars` before filling in the bot token, private chat ID, and API key. Do not paste credentials into chat or commit them. See [security requirements](#security) if setup refuses unsafe directory permissions.
+
+Before re-pairing a running polling installation, temporarily remove its `* * * * *` command cron in the Cloudflare dashboard and allow the schedule change to propagate. Keep the hourly cron. Otherwise the cloud poller could consume the setup message. Redeployment restores both schedules. Legacy webhooks are temporarily suspended during re-pairing and restored afterward until deployment migrates them to polling.
 
 ### 2. Preview the real wishlist
 
@@ -52,7 +54,7 @@ npm run login
 npm run deploy
 ```
 
-Choose a **Workers Free** account and verify its email address. New accounts also need their initial Workers setup, including a workers.dev subdomain. Deployment validates the live price feed, creates a KV namespace if needed, and publishes code and secrets together. It enables the workers.dev route for an authenticated Telegram webhook at `/telegram`; preview URLs remain disabled. It then registers `/deals` and `/help` for your private chat. Existing installations receive a generated webhook secret automatically. No script upgrades your account to a paid plan. `.dev.vars` is uploaded as encrypted Worker secrets, not bundled into source.
+Choose a **Workers Free** account and verify its email address. New accounts also need their initial Workers setup. Deployment validates the live price feed, creates a KV namespace if needed, and publishes code and secrets together. It disables workers.dev, preview URLs, and configured HTTP routes. It registers `/deals` and `/help` for your private chat and removes any old Telegram webhook while preserving queued updates. Commands are fetched directly from Telegram every minute, so replies normally take up to one minute. No script upgrades your account to a paid plan. `.dev.vars` is uploaded as encrypted Worker secrets, not bundled into source.
 
 Checks run at **minute 00 of each hour** (also minute 00 in Bangkok). Schedule changes may take about 15 minutes to propagate. Retailer data and free scheduling can lag; one-hour delivery is a target, not a guarantee. The first complete check sends existing qualifying discounts.
 
@@ -68,7 +70,7 @@ Send **`/deals`** to the bot, or select it from the command menu. It returns the
 
 This command reads saved prices rather than polling retailers again. Each game shows its comparison time; paused products retain their earlier timestamp, and prices older than 24 hours are omitted with a warning. Expired offers and unusable exchange rates are excluded. Missing saved data produces an explicit message. Store prices can change before the next hourly check.
 
-Only your configured private Telegram account can request the list. Requests less than ten seconds apart are ignored. Command delivery checkpoints use separate KV keys and never change automatic alert baselines. Standard hourly messages continue to contain only new or cheaper discounts.
+Only your configured private Telegram account can request the list. Commands are checked every minute; requests processed within ten seconds of another new command are ignored. Command delivery checkpoints use separate KV keys and never change automatic alert baselines. Standard hourly messages continue to contain only new or cheaper discounts.
 
 ## Store coverage and exact matching
 
@@ -88,13 +90,14 @@ This helper requires matching title and publisher, a single stable variant, Stea
 
 ## Reliability and privacy
 
-- Only authenticated `POST /telegram` updates from the configured private human sender are accepted. Other HTTP paths and unauthenticated requests receive 404. Bot credentials, webhook authentication, and the allowed private chat ID stay in secret storage.
+- Commands are fetched directly from Telegram and accepted only from the configured private human sender. Public HTTP and preview URLs are disabled, and the HTTP handler always returns 404. Bot credentials and the allowed private chat ID stay in secret storage.
 - A failed/private wishlist is never interpreted as an empty wishlist. Failed comparisons keep their last baseline; affected products pause until recovery.
 - A required broad-feed failure pauses the scan. An optional direct-source failure pauses affected comparisons rather than fabricating a sale ending.
 - Failure notices start after three unsuccessful checks and repeat only after recovery and a new outage.
 - A persisted outbox resumes after acknowledged digest parts. If Telegram accepts a message but the subsequent storage write fails, a duplicate remains possible; delivery is not exactly-once. Pending digests older than two hours are discarded and recalculated.
 - Production state writes are serialized with at least 1.1 seconds after each completed write, respecting KV's one-write-per-second limit for the same key.
-- Only one hourly cron is configured. `/deals` does not trigger another scan. Do not run a second production scheduler against the same state. The local preview uses no delivery history writes; `npm run send` uses separate local state and is for deliberate local testing, not a second scheduler.
+- Only the hourly `0 * * * *` cron scans stores. The separate `* * * * *` cron polls commands and reads saved prices. `/deals` does not trigger another scan. Do not run a second production scheduler or Telegram update consumer against the same bot. The local preview uses no delivery history writes; `npm run send` uses separate local state and is for deliberate local testing, not a second scheduler.
+- Each minute poll reads at most 100 updates. Empty polls make no KV reads or writes; ignored users also cause no KV access. Telegram retains unconfirmed updates until processing succeeds, and separate delivery checkpoints prevent ordinary retries from resending completed parts. Scheduling and Telegram outages can delay commands.
 - Rates are cached daily, retain their observation date, and can be reused for up to seven days through outages/holidays. Missing conversion data pauses affected comparisons.
 
 ## Security
@@ -113,15 +116,17 @@ If setup reports `private_workspace_permissions_required_see_README_md`, inspect
 
 The default is read-only. Optional `-Apply` removes broad-group allow rules from the project and credential file, protects inheritance, preserves specific user/automation entries and deny rules, and grants the current user, SYSTEM, and Administrators full access. Inherited changes can propagate to child files. Original root and credential ACLs are saved in ignored `.data/security-acl-backup.json`. Review necessary users before applying; no permissions outside the project are changed.
 
-Cloudflare stores the bot token, private chat ID, price-feed API key, and generated webhook secret as Worker secrets. Logs contain counts and known error codes; Worker query strings are redacted. Check raw diagnostics before sharing them.
+Cloudflare stores the bot token, private chat ID, and price-feed API key as Worker secrets. Logs contain counts and known error codes; Worker query strings are redacted. Check raw diagnostics before sharing them.
 
 ### Private Telegram access
 
 Recipient setup uses a fresh cryptographically random `/start` link. Ordinary messages, previous codes, mismatched sender/chat IDs, groups, and ambiguous matches cannot select the recipient. Setup examines the latest 100 updates; Telegram's negative offset discards older queued updates. Use a dedicated personal bot.
 
-The webhook checks a generated 256-bit secret header before parsing its body or accessing storage. Authenticated bodies are limited to 16 KiB, and commands require a fresh private message from the configured human sender. Forwarded commands, edited messages, groups, and other users are ignored. Command text selects fixed actions; it is never executed. There is no HTTP endpoint for starting scans or changing settings, and preview URLs remain disabled.
+There is no public command endpoint: workers.dev, preview URLs, and configured HTTP routes are disabled. This prevents arbitrary HTTP traffic from invoking the Worker and exhausting its free request quota. Do not enable a public route or add an inbound webhook. The fallback HTTP handler always returns 404.
 
-Telegram documents the [webhook secret header](https://core.telegram.org/bots/api#setwebhook) and [private command menu scopes](https://core.telegram.org/bots/api#botcommandscopechat). Command-menu visibility alone is not authorization. Command checkpoints are bounded and retained for 24 hours in separate KV keys; a ten-second cooldown and one webhook connection limit repeat work.
+The minute cron fetches updates over fixed-origin HTTPS using the bot token. Commands require a fresh private message from the configured human sender. Forwarded commands, edited messages, groups, and other users are ignored before KV access. Command text selects fixed actions; it is never executed. Telegram response sizes and per-poll requests are bounded.
+
+Telegram documents [update acknowledgement and queue retention](https://core.telegram.org/bots/api#getupdates) and [private command menu scopes](https://core.telegram.org/bots/api#botcommandscopechat). Updates are acknowledged only after accepted commands finish. Updates returned during acknowledgement stay queued for the next poll. Command-menu visibility alone is not authorization. Command checkpoints are bounded and retained for 24 hours in separate KV keys; a ten-second processing cooldown limits repeat work. A Telegram message flood could delay command processing, so use a dedicated personal bot.
 
 ### External data and trust
 
@@ -132,7 +137,7 @@ Telegram documents the [webhook secret header](https://core.telegram.org/bots/ap
 
 The application trusts its OS user, authorized Cloudflare administrators, private KV, Telegram, and price providers. Origin checks cannot independently authenticate an ITAD redirect's eventual destination or provider catalog assignments. KV is not a distributed lock; delivery followed by a failed checkpoint can produce a duplicate. Dependency checks cannot exclude undisclosed vulnerabilities.
 
-Manual review and regression tests covered pairing, webhook authorization, destination checks, response limits, persisted state, FX validation, and local credential access. These checks do not constitute independent certification or provider/account penetration testing. Report vulnerabilities privately through GitHub's security reporting if enabled; never include real tokens or private chat IDs in public issues. Rotate credentials through their issuing services if compromise is confirmed.
+Manual review and regression tests covered pairing, private command authorization, polling acknowledgements, disabled HTTP handling, destination checks, response limits, persisted state, FX validation, and local credential access. These checks do not constitute independent certification or provider/account penetration testing. Report vulnerabilities privately through GitHub's security reporting if enabled; never include real tokens or private chat IDs in public issues. Rotate credentials through their issuing services if compromise is confirmed.
 
 ## Validation
 
@@ -153,3 +158,7 @@ Verified on 19 October 2026: a live preview compared all 28 wishlist products, a
 The repository contains `wrangler.example.jsonc` and empty `.dev.vars.example` as shareable templates. Real `wrangler.jsonc`, `.dev.vars`, delivery history, logs, build output, and dependencies are ignored. Keep local configuration when updating an existing deployment; replacing its KV namespace would start new notification history.
 
 GitHub Actions runs syntax checks, offline tests, and a dry-run Worker build on Node.js 22 and 24. CI requires no Telegram, IsThereAnyDeal, or Cloudflare credentials, sends no messages, and does not deploy. Action versions are pinned to commit hashes. Live source checks and deployment are explicit local commands.
+
+The published repository protects `main` with both `validate (22)` and `validate (24)` checks, requires the branch to be current before merging, and blocks deletion and force pushes without bypass actors. Make changes on a feature branch, push it, and merge after CI passes.
+
+Use your GitHub-provided noreply address in this checkout's `git config user.email` before committing. The original six published commits were rewritten with a noreply address while preserving their files, messages, and dates. Other clones must resync; do not merge old history back into `main`. Rewriting cannot erase addresses from existing copies or GitHub caches. Local backup refs must stay private; never publish them with `git push --mirror`.
