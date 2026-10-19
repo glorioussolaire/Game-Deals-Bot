@@ -123,7 +123,7 @@ test("credential writes refuse an unsafe workspace or replace a private file ato
   await writeFile(file, "previous synthetic value");
   try { await assertPrivateDirectory(directory); }
   catch (error) {
-    assert.equal(error.code, "private_workspace_permissions_required_see_SECURITY_md");
+    assert.equal(error.code, "private_workspace_permissions_required_see_README_md");
     await assert.rejects(writePrivateFile(file, "replacement"), /private_workspace_permissions_required/);
     assert.equal(await readFile(file, "utf8"), "previous synthetic value");
     assert.deepEqual(await readdir(directory), [".dev.vars"]);

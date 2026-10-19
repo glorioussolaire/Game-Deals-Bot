@@ -20,9 +20,9 @@ export async function assertPrivateDirectory(directory) {
       await execute(path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
         ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", windowsCheck],
         { env: { ...process.env, WISHLIST_PRIVATE_DIRECTORY: directory }, timeout: 10000, maxBuffer: 4096 });
-    } catch { throw new SourceError("config", "private_workspace_permissions_required_see_SECURITY_md"); }
+    } catch { throw new SourceError("config", "private_workspace_permissions_required_see_README_md"); }
   } else if ((await stat(directory)).mode & 0o022) {
-    throw new SourceError("config", "private_workspace_permissions_required_see_SECURITY_md");
+    throw new SourceError("config", "private_workspace_permissions_required_see_README_md");
   }
 }
 

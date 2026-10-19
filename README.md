@@ -33,7 +33,7 @@ npm run configure
 
 On a fresh checkout, the setup command copies `wrangler.example.jsonc` to ignored `wrangler.jsonc` and asks for your public Steam wishlist URL or 17-digit Steam ID. It keeps existing local configuration intact. Steam vanity-name URLs are not supported; use the numeric profile URL.
 
-The command first checks local directory permissions, hides secret input, and verifies your bot. It prints a fresh setup link; open that link and press Start in your own private chat. Only a matching setup code can select the private recipient. It saves credentials atomically to ignored `.dev.vars`, without sending test messages. Existing command webhooks are temporarily suspended during re-pairing and restored afterward. For manual setup, copy `wrangler.example.jsonc` to `wrangler.jsonc`, set `vars.STEAM_ID`, and copy `.dev.vars.example` to `.dev.vars` before filling in the bot token, private chat ID, and API key. The webhook secret is generated automatically. Do not paste credentials into chat or commit them. See [security requirements](SECURITY.md) if setup refuses unsafe directory permissions.
+The command first checks local directory permissions, hides secret input, and verifies your bot. It prints a fresh setup link; open that link and press Start in your own private chat. Only a matching setup code can select the private recipient. It saves credentials atomically to ignored `.dev.vars`, without sending test messages. Existing command webhooks are temporarily suspended during re-pairing and restored afterward. For manual setup, copy `wrangler.example.jsonc` to `wrangler.jsonc`, set `vars.STEAM_ID`, and copy `.dev.vars.example` to `.dev.vars` before filling in the bot token, private chat ID, and API key. The webhook secret is generated automatically. Do not paste credentials into chat or commit them. See [security requirements](#security) if setup refuses unsafe directory permissions.
 
 ### 2. Preview the real wishlist
 
@@ -97,6 +97,43 @@ This helper requires matching title and publisher, a single stable variant, Stea
 - Only one hourly cron is configured. `/deals` does not trigger another scan. Do not run a second production scheduler against the same state. The local preview uses no delivery history writes; `npm run send` uses separate local state and is for deliberate local testing, not a second scheduler.
 - Rates are cached daily, retain their observation date, and can be reused for up to seven days through outages/holidays. Missing conversion data pauses affected comparisons.
 
+## Security
+
+### Credentials and local access
+
+Keep `.dev.vars`, real `wrangler.jsonc`, `.data/`, `.wrangler/`, and deployment logs out of Git. Credential examples must remain empty. Ignore rules protect publication; operating-system permissions protect local access.
+
+Use a project directory trusted only by its owner and necessary administrators or automation. Anyone who can modify application code can change what runs with its credentials. Setup refuses broad Windows group access and group/other-writable Unix directories. Credential replacement uses an exclusive temporary file and atomic rename; Unix files use mode `0600`, which alone does not establish a private Windows ACL.
+
+If setup reports `private_workspace_permissions_required_see_README_md`, inspect Windows permissions with:
+
+```powershell
+.\scripts\secure-workspace.ps1
+```
+
+The default is read-only. Optional `-Apply` removes broad-group allow rules from the project and credential file, protects inheritance, preserves specific user/automation entries and deny rules, and grants the current user, SYSTEM, and Administrators full access. Inherited changes can propagate to child files. Original root and credential ACLs are saved in ignored `.data/security-acl-backup.json`. Review necessary users before applying; no permissions outside the project are changed.
+
+Cloudflare stores the bot token, private chat ID, price-feed API key, and generated webhook secret as Worker secrets. Logs contain counts and known error codes; Worker query strings are redacted. Check raw diagnostics before sharing them.
+
+### Private Telegram access
+
+Recipient setup uses a fresh cryptographically random `/start` link. Ordinary messages, previous codes, mismatched sender/chat IDs, groups, and ambiguous matches cannot select the recipient. Setup examines the latest 100 updates; Telegram's negative offset discards older queued updates. Use a dedicated personal bot.
+
+The webhook checks a generated 256-bit secret header before parsing its body or accessing storage. Authenticated bodies are limited to 16 KiB, and commands require a fresh private message from the configured human sender. Forwarded commands, edited messages, groups, and other users are ignored. Command text selects fixed actions; it is never executed. There is no HTTP endpoint for starting scans or changing settings, and preview URLs remain disabled.
+
+Telegram documents the [webhook secret header](https://core.telegram.org/bots/api#setwebhook) and [private command menu scopes](https://core.telegram.org/bots/api#botcommandscopechat). Command-menu visibility alone is not authorization. Command checkpoints are bounded and retained for 24 hours in separate KV keys; a ten-second cooldown and one webhook connection limit repeat work.
+
+### External data and trust
+
+- Requests use fixed, approved HTTPS hostnames. Redirects are returned manually and rejected without forwarding credentials. Responses are limited to 4 MiB, requests time out after 20 seconds, and scans have a 45-request budget.
+- Purchase links require HTTPS, a standard port, no userinfo or control characters, and an exact approved origin. ITAD links use `itad.link` or `isthereanydeal.com`; direct links use the retailer's domain. Attribution parameters are preserved; changed provider link formats require review.
+- Telegram text and link attributes are HTML-escaped. Storefront scripts and MCP instructions are never executed.
+- Stored state, delivery cursors, message sizes, and commit snapshots are validated before use. Malformed state stops processing rather than resetting history. FX validation rejects invalid/future dates, duplicate or unrequested quotes, non-finite rates, and stale caches.
+
+The application trusts its OS user, authorized Cloudflare administrators, private KV, Telegram, and price providers. Origin checks cannot independently authenticate an ITAD redirect's eventual destination or provider catalog assignments. KV is not a distributed lock; delivery followed by a failed checkpoint can produce a duplicate. Dependency checks cannot exclude undisclosed vulnerabilities.
+
+Manual review and regression tests covered pairing, webhook authorization, destination checks, response limits, persisted state, FX validation, and local credential access. These checks do not constitute independent certification or provider/account penetration testing. Report vulnerabilities privately through GitHub's security reporting if enabled; never include real tokens or private chat IDs in public issues. Rotate credentials through their issuing services if compromise is confirmed.
+
 ## Validation
 
 ```powershell
@@ -110,8 +147,6 @@ npm run benchmark
 The test suite covers matching and exclusions, cheapest-offer selection, price and FX changes, initial/later alerts, removal/re-addition, failures, retry checkpoints, safe formatting, and private access. `check:live` sends no Telegram messages; it explicitly reports authenticated ITAD prices as **not tested** until the key exists. `benchmark` measures local parsing/comparison/formatting, not Cloudflare's deployed CPU accounting.
 
 Verified on 19 October 2026: a live preview compared all 28 wishlist products, and a deployed `/deals` test restored the full saved list while leaving the production alert-history record unchanged. The owner also confirmed receiving the list after sending the command through Telegram. A complete cloud scan with every source available and its free-plan CPU consumption remain unverified.
-
-Read [the security policy](SECURITY.md) before using real credentials. Publication checks and local operating-system access checks protect different boundaries.
 
 ## Repository and GitHub
 
