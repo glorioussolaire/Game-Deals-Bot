@@ -1,5 +1,6 @@
 import { runMonitor } from "./monitor.js";
 import { paceStateStorage } from "./storage.js";
+import { handleTelegram } from "./commands.js";
 
 let active = false;
 
@@ -17,5 +18,5 @@ export default {
       throw new Error("Wishlist monitor failed; inspect the redacted monitor_failure event.");
     } finally { active = false; }
   },
-  async fetch() { return new Response("Not found", { status: 404 }); }
+  async fetch(request, env) { return handleTelegram(request, env); }
 };

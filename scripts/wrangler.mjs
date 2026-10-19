@@ -3,18 +3,24 @@ import path from "node:path";
 import { root, localConfig } from "./env.mjs";
 import { fileURLToPath } from "node:url";
 
-export async function wrangler(args, { input, inherit = true } = {}) {
+export async function wrangler(args, { input, inherit = true, capture = false } = {}) {
   await localConfig();
   return new Promise((resolve, reject) => {
+    let output = "";
     const child = spawn(process.execPath, [path.join(root, "node_modules", "wrangler", "bin", "wrangler.js"), ...args], {
       cwd: root,
       env: { ...process.env, WRANGLER_LOG_PATH: path.join(root, ".data", "wrangler-logs"), WRANGLER_SEND_METRICS: "false" },
-      stdio: input ? ["pipe", inherit ? "inherit" : "pipe", "inherit"] : "inherit"
+      stdio: [input ? "pipe" : "inherit", capture || !inherit ? "pipe" : "inherit", "inherit"]
+    });
+    if (child.stdout) child.stdout.on("data", data => {
+      if (inherit) process.stdout.write(data);
+      output += data.toString();
+      if (output.length > 1024 * 1024) child.kill();
     });
     if (input) child.stdin.end(input);
     child.once("error", reject);
     child.once("exit", code => {
-      if (code === 0) return resolve();
+      if (code === 0) return resolve(output);
       const error = new Error("Wrangler failed; see the Cloudflare error above.");
       error.name = "WranglerError";
       reject(error);

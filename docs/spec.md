@@ -53,6 +53,12 @@ Fanatical's Thailand-filtered catalog result is first-party regional-availabilit
 6. Include the product name, retailer, current original price, approximate THB when applicable, retailer's discount percentage, purchase link, and explicit Thailand verification status. Preserve required source attribution and returned affiliate parameters.
 7. Send one logical digest per run, splitting it only if required by Telegram's message-size limit. Send nothing when no new offer qualifies.
 
+### On-demand recovery
+
+`/deals` returns all discounted offers from the latest usable hourly snapshots, including discounts already alerted. It supports restoring the list after Telegram history is deleted. It selects the cheapest eligible offer per product with the same eligibility rules, shows individual comparison times, identifies paused comparisons, and omits prices older than 24 hours or offers with unusable FX. It does not query retailers or alter hourly alert history. `/start` and `/help` explain this behavior.
+
+Only authenticated Telegram webhook updates from the configured private human recipient can invoke commands. Command retries use separate delivery checkpoints; they cannot change wishlist configuration or trigger a monitoring scan.
+
 ## Wishlist changes and source failures
 
 Automatically follow additions and removals. A failed or private wishlist is not an empty wishlist. Source outages are not sale endings: retain prior state and do not invent price changes from failed reads. Report persistent monitoring failures without repeating the same error notice every hour.

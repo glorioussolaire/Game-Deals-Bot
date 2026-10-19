@@ -9,11 +9,12 @@ Private Telegram alerts for discounted Steam games and wishlisted DLC, comparing
 - Checks Fanatical's direct Thailand catalog and validated 2Game Thai products.
 - Sends the cheapest discounted offer per product in one logical digest. Large digests split at Telegram's size limit.
 - Alerts on the first check, newly wishlisted discounts, later sales, and further price reductions. Unchanged offers and exchange-rate changes alone stay quiet.
+- Responds to `/deals` with all discounts from the latest saved hourly checks, even if you deleted Telegram chat history. This does not reset automatic alerts.
 - Shows source currency and estimated THB using dated ECB rates through Frankfurter.
 - Clearly marks **Thailand activation unverified** when regional eligibility is unknown. Explicit Thailand restrictions, non-Steam keys, bundles, substitute editions, conditional vouchers, and key resale marketplaces are excluded.
 - Preserves price history on failed reads, retries unsent digests, and reports persistent failures once rather than every hour.
 
-**Validation:** all 47 tests pass, and a live preview compared 28 wishlist games. Private Telegram delivery and hourly cloud execution are confirmed. The latest cloud check encountered Fanatical and 2Game rate limits and paused comparisons; a complete cloud scan and its CPU usage remain unverified. See [validation results](docs/validation.md).
+**Validation:** all 57 tests pass, including private command authorization, saved-list restoration, and delivery retries. A live preview compared 28 wishlist games. Hourly cloud execution and private delivery are confirmed; retailer rate limits can pause comparisons. See [validation results](docs/validation.md).
 
 ## Activate it
 
@@ -32,7 +33,7 @@ npm run configure
 
 On a fresh checkout, the setup command copies `wrangler.example.jsonc` to ignored `wrangler.jsonc` and asks for your public Steam wishlist URL or 17-digit Steam ID. It keeps existing local configuration intact. Steam vanity-name URLs are not supported; use the numeric profile URL.
 
-The command first checks local directory permissions, hides secret input, and verifies your bot. It prints a fresh setup link; open that link and press Start in your own private chat. Only a matching setup code can select the private recipient. It saves credentials atomically to ignored `.dev.vars`, without sending test messages. For manual setup, copy `wrangler.example.jsonc` to `wrangler.jsonc`, set `vars.STEAM_ID`, and copy `.dev.vars.example` to `.dev.vars` before filling in credentials. Do not paste credentials into chat or commit them. See [security requirements](SECURITY.md) if setup refuses unsafe directory permissions.
+The command first checks local directory permissions, hides secret input, and verifies your bot. It prints a fresh setup link; open that link and press Start in your own private chat. Only a matching setup code can select the private recipient. It saves credentials atomically to ignored `.dev.vars`, without sending test messages. Existing command webhooks are temporarily suspended during re-pairing and restored afterward. For manual setup, copy `wrangler.example.jsonc` to `wrangler.jsonc`, set `vars.STEAM_ID`, and copy `.dev.vars.example` to `.dev.vars` before filling in the bot token, private chat ID, and API key. The webhook secret is generated automatically. Do not paste credentials into chat or commit them. See [security requirements](SECURITY.md) if setup refuses unsafe directory permissions.
 
 ### 2. Preview the real wishlist
 
@@ -51,7 +52,7 @@ npm run login
 npm run deploy
 ```
 
-Choose a **Workers Free** account and verify its email address. New accounts also need their initial Workers setup, including a workers.dev subdomain, before Cloudflare accepts cron schedules. The bot's public HTTP route remains disabled. Deployment first validates the live price feed, creates a KV namespace if needed, writes its binding to `wrangler.jsonc`, and deploys code and secrets together. No script upgrades your account to a paid plan. `.dev.vars` is uploaded as encrypted Worker secrets, not bundled into source.
+Choose a **Workers Free** account and verify its email address. New accounts also need their initial Workers setup, including a workers.dev subdomain. Deployment validates the live price feed, creates a KV namespace if needed, and publishes code and secrets together. It enables the workers.dev route for an authenticated Telegram webhook at `/telegram`; preview URLs remain disabled. It then registers `/deals` and `/help` for your private chat. Existing installations receive a generated webhook secret automatically. No script upgrades your account to a paid plan. `.dev.vars` is uploaded as encrypted Worker secrets, not bundled into source.
 
 Checks run at **minute 00 of each hour** (also minute 00 in Bangkok). Schedule changes may take about 15 minutes to propagate. Retailer data and free scheduling can lag; one-hour delivery is a target, not a guarantee. The first complete check sends existing qualifying discounts.
 
@@ -60,6 +61,14 @@ npm run logs
 ```
 
 Logs contain counts and redacted error codes. Check Cloudflare's dashboard for CPU usage after activation. Local benchmarks do not establish deployed CPU consumption. Free-plan limits stop work rather than authorizing a paid upgrade.
+
+## Restore the full discount list
+
+Send **`/deals`** to the bot, or select it from the command menu. It returns the cheapest discounted offer for each product in the latest saved hourly prices, including offers already sent earlier. Clearing the conversation does not lose access to this list. `/start` and `/help` explain the command.
+
+This command reads saved prices rather than polling retailers again. Each game shows its comparison time; paused products retain their earlier timestamp, and prices older than 24 hours are omitted with a warning. Expired offers and unusable exchange rates are excluded. Missing saved data produces an explicit message. Store prices can change before the next hourly check.
+
+Only your configured private Telegram account can request the list. Requests less than ten seconds apart are ignored. Command delivery checkpoints use separate KV keys and never change automatic alert baselines. Standard hourly messages continue to contain only new or cheaper discounts.
 
 ## Store coverage and exact matching
 
@@ -79,13 +88,13 @@ This helper requires matching title and publisher, a single stable variant, Stea
 
 ## Reliability and privacy
 
-- The Worker has no public command endpoint; HTTP requests receive 404. Tokens and the allowed positive private chat ID stay in secret storage.
+- Only authenticated `POST /telegram` updates from the configured private human sender are accepted. Other HTTP paths and unauthenticated requests receive 404. Bot credentials, webhook authentication, and the allowed private chat ID stay in secret storage.
 - A failed/private wishlist is never interpreted as an empty wishlist. Failed comparisons keep their last baseline; affected products pause until recovery.
 - A required broad-feed failure pauses the scan. An optional direct-source failure pauses affected comparisons rather than fabricating a sale ending.
 - Failure notices start after three unsuccessful checks and repeat only after recovery and a new outage.
 - A persisted outbox resumes after acknowledged digest parts. If Telegram accepts a message but the subsequent storage write fails, a duplicate remains possible; delivery is not exactly-once. Pending digests older than two hours are discarded and recalculated.
 - Production state writes are serialized with at least 1.1 seconds after each completed write, respecting KV's one-write-per-second limit for the same key.
-- Only one hourly cron is configured. Do not run a second production scheduler against the same state. The local preview uses no delivery history writes; `npm run send` uses separate local state and is for deliberate local testing, not a second scheduler.
+- Only one hourly cron is configured. `/deals` does not trigger another scan. Do not run a second production scheduler against the same state. The local preview uses no delivery history writes; `npm run send` uses separate local state and is for deliberate local testing, not a second scheduler.
 - Rates are cached daily, retain their observation date, and can be reused for up to seven days through outages/holidays. Missing conversion data pauses affected comparisons.
 
 ## Validation

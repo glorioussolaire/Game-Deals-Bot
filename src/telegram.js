@@ -3,15 +3,16 @@ import { SourceError, purchaseUrl } from "./http.js";
 export const escapeHtml = value => String(value).replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 const number = value => Number(value).toFixed(2).replace(/\.00$/, "");
 
-export function formatDigest(alerts, { checkedAt, fx, stores = [], warnings = [] }) {
+export function formatDigest(alerts, { checkedAt, fx, stores = [], warnings = [], snapshot = false }) {
   if (!alerts.length) return [];
-  const header = `<b>Wishlist discounts</b> · ${escapeHtml(checkedAt.replace("T", " ").slice(0, 16))} UTC\n`;
+  const header = snapshot ? `<b>All wishlist discounts</b>\nLatest saved prices; refreshed hourly. Check times are shown per game.\n` :
+    `<b>Wishlist discounts</b> · ${escapeHtml(checkedAt.replace("T", " ").slice(0, 16))} UTC\n`;
   const footer = `\nCheapest among checked authorized Steam offers.\n` +
     (fx ? `Estimated THB: ECB via Frankfurter, ${escapeHtml(fx.date)}.\n` : "") +
     `Sources: <a href="https://isthereanydeal.com/">IsThereAnyDeal</a>, Steam` +
     (stores.includes("Fanatical") ? ", Fanatical" : "") + (stores.includes("2Game") ? ", 2Game" : "") +
     (warnings.length ? `\nCoverage: ${escapeHtml(warnings.join("; "))}` : "");
-  const pieces = alerts.map(({ title, offer, thb }) => {
+  const pieces = alerts.map(({ title, offer, thb, observedAt }) => {
     const url = purchaseUrl(offer.source, offer.url);
     if (!url) throw new SourceError("telegram", "invalid_purchase_link");
     const original = `${offer.currency} ${number(offer.amount)}`;
@@ -21,7 +22,8 @@ export function formatDigest(alerts, { checkedAt, fx, stores = [], warnings = []
     const reference = offer.priceBasis === "reference" ? `\n${escapeHtml(offer.referenceCountry ?? "US")} reference price, as reported by feed` : "";
     return `\n<b>${escapeHtml(title.slice(0, 250))}</b>\n` +
       `<a href="${escapeHtml(url)}">${escapeHtml(offer.shop)}</a> · ${escapeHtml(price)} · ${escapeHtml(discount)}\n` +
-      `${status}${reference}\n`;
+      `${status}${reference}` +
+      (snapshot ? `\nLast compared: ${escapeHtml(observedAt.replace("T", " ").slice(0, 16))} UTC` : "") + "\n";
   });
   // Conservative HTML-length budget also keeps plain-text Telegram length safe.
   const messages = [];

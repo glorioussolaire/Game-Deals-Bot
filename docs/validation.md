@@ -4,11 +4,11 @@ Verified on 19 October 2026. Local comparisons and private Telegram delivery pas
 
 ## Application checks
 
-- All 47 offline tests pass, covering exact matching, retailer and region exclusions, cheapest-offer selection, price and FX changes, wishlist changes, source failures, delivery retries, bounded responses, and private credential storage.
+- All 57 offline tests pass, including saved-list restoration after earlier alerts, unchanged hourly history, private command authorization, bounded webhook bodies, stale data, duplicate updates, and multi-part reply recovery, alongside the existing price and security tests.
 - `npm run check` parses all application, script, and test JavaScript successfully.
 - A clean public checkout passed a dry-run Worker build without credentials or live API access. GitHub Actions validates Node.js 22 and 24 with pinned official actions and no deployment credentials.
 - `npm audit --audit-level=high` reported zero known vulnerabilities in the locked dependency tree. There are no runtime npm dependencies.
-- The deployed hardened Worker bundle was 39.94 KiB, or 11.90 KiB gzipped, with reported startup time of 1 ms. Startup and local benchmarks do not measure full-scan cloud CPU consumption.
+- The deployed Worker including private commands is 47.46 KiB, or 13.90 KiB gzipped, with reported startup time of 1 ms. Startup and local benchmarks do not measure full-scan cloud CPU consumption.
 - Windows workspace and credential permissions were restricted and verified. Synthetic atomic credential replacement and normal project access passed. See [the security audit](security-audit.md).
 
 ## Live source and delivery checks
@@ -18,10 +18,11 @@ Verified on 19 October 2026. Local comparisons and private Telegram delivery pas
 - 2Game covers one explicitly validated product, Mount & Blade II: Bannerlord. No full-wishlist 2Game coverage is claimed.
 - An initial commissioning run used production KV and delivered one digest for 27 products. Telegram acknowledged the digest, and delivery baselines were stored in the cloud.
 - A separate labeled delivery test verified the configured private recipient and received Telegram's acknowledgement for one test message. It did not change discount history. API acknowledgement does not independently verify phone notification settings.
+- The deployed `/deals` webhook returned HTTP 200 and delivered the full saved discount list in one acknowledged message. Its separate command checkpoint completed, and the production monitor-state record was byte-for-byte unchanged. The private command menu was verified, unauthenticated access returned 404, and another-user input was ignored. The owner then sent the command through Telegram and confirmed that the full list arrived, verifying the actual inbound command path as well.
 
 ## Cloud execution and remaining limits
 
-- The deployed Worker has three encrypted secret bindings, disabled public and preview HTTP routes, and a single `0 * * * *` schedule. Checks run at minute 00 of each hour in Bangkok as well as UTC.
+- Hourly monitoring uses a single `0 * * * *` schedule. The command extension adds a generated webhook secret and an authenticated workers.dev route; preview URLs remain disabled. Commands read saved prices without starting another scan.
 - A read-only production check confirmed an attempt at 07:00:29 UTC, or 14:00 Thailand time. Fanatical and 2Game returned HTTP 429. The bot paused comparisons, retained 27 prior product baselines, and had no pending messages after that run. A run timestamp alone does not establish complete source coverage.
 - Rate-limited sources are retried on the next hourly check. Persistent failures produce one notice after three unsuccessful checks, with a new notice only after recovery and another outage.
 - A complete cloud scan and actual free-plan CPU consumption remain unverified. The observability query API returned HTTP 403 with the current login; no broader permissions or paid services were enabled.

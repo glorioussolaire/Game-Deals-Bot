@@ -6,6 +6,9 @@ import { localEnv, localConfig, steamIdFromInput, root, friendlyError } from "./
 import { client } from "../src/http.js";
 import { setupChallenge, setupRecipient } from "./telegram-setup.mjs";
 import { assertPrivateDirectory, writePrivateFile } from "./private-storage.mjs";
+import { newWebhookSecret, validWebhookSecret, telegramSetting } from "./telegram-webhook.mjs";
+
+let restoreWebhook;
 
 async function question(label) {
   const reader = createInterface({ input: stdin, output: stdout });
@@ -53,6 +56,15 @@ try {
   const http = client();
   const me = await http.json("telegram_setup", `https://api.telegram.org/bot${token}/getMe`);
   if (!me.ok || me.result?.is_bot !== true || !/^[A-Za-z0-9_]{5,32}$/.test(me.result.username ?? "")) throw new Error("Bot verification failed");
+  const webhook = await telegramSetting(http, token, "getWebhookInfo");
+  if (webhook?.url) {
+    if (token !== env.TELEGRAM_BOT_TOKEN || !validWebhookSecret(env.TELEGRAM_WEBHOOK_SECRET)) {
+      throw new Error("Existing webhook requires its saved configuration before re-pairing");
+    }
+    restoreWebhook = async () => telegramSetting(http, token, "setWebhook", { url: webhook.url,
+      secret_token: env.TELEGRAM_WEBHOOK_SECRET, allowed_updates: ["message"], max_connections: 1, drop_pending_updates: false });
+    await telegramSetting(http, token, "deleteWebhook", { drop_pending_updates: false });
+  }
   const challenge = setupChallenge();
   const startedAt = Date.now();
   console.log(`Open https://t.me/${me.result.username}?start=${challenge} and press Start in your private chat.`);
@@ -60,11 +72,18 @@ try {
   const updates = await http.json("telegram_setup", `https://api.telegram.org/bot${token}/getUpdates?timeout=0&limit=100&offset=-100`);
   if (!updates.ok || !Array.isArray(updates.result)) throw new Error("Could not read bot updates");
   const chatId = setupRecipient(updates.result, challenge, startedAt);
-  const text = Object.entries({ TELEGRAM_BOT_TOKEN: token, TELEGRAM_CHAT_ID: chatId, ITAD_API_KEY: key }).map(([name, value]) => `${name}=${JSON.stringify(value)}`).join("\n") + "\n";
+  const webhookSecret = token === env.TELEGRAM_BOT_TOKEN && validWebhookSecret(env.TELEGRAM_WEBHOOK_SECRET) ? env.TELEGRAM_WEBHOOK_SECRET : newWebhookSecret();
+  const text = Object.entries({ TELEGRAM_BOT_TOKEN: token, TELEGRAM_CHAT_ID: chatId, ITAD_API_KEY: key,
+    TELEGRAM_WEBHOOK_SECRET: webhookSecret }).map(([name, value]) => `${name}=${JSON.stringify(value)}`).join("\n") + "\n";
   await writePrivateFile(path.join(root, ".dev.vars"), text);
   console.log("Saved credentials to ignored .dev.vars. Run npm run preview to validate the feed without sending alerts.");
 } catch (error) {
   console.error(friendlyError(error));
-  console.error("You can also copy .dev.vars.example to .dev.vars and fill its three values privately.");
+  console.error("You can also copy .dev.vars.example to .dev.vars and fill the bot token, chat ID, and API key privately. Deployment generates the webhook secret.");
   process.exitCode = 1;
+} finally {
+  if (restoreWebhook) {
+    try { await restoreWebhook(); }
+    catch { console.error("Restoring Telegram commands failed. Run npm run deploy to restore the saved webhook."); process.exitCode = 1; }
+  }
 }

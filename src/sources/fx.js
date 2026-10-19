@@ -1,6 +1,6 @@
 import { SourceError } from "../http.js";
 
-function freshDate(date, now) {
+export function freshDate(date, now) {
   if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
   const timestamp = Date.parse(date);
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === date &&

@@ -1,6 +1,6 @@
 # Security
 
-The bot sends alerts to one configured private Telegram chat. Production has no public command endpoint, inbound message handler, or webhook. Workers HTTP and preview routes are disabled.
+The bot sends alerts and command replies to one configured private Telegram chat. The workers.dev route accepts only authenticated Telegram webhook updates at `POST /telegram`. All other paths and unauthenticated requests return 404; preview URLs remain disabled. There is no HTTP endpoint for starting a price scan or changing settings.
 
 ## Local secrets and code
 
@@ -24,6 +24,13 @@ Setup prints a fresh cryptographically random `/start` link. Open that link and 
 
 ## External data
 
+- Telegram webhook authentication uses a generated 256-bit secret in the official `X-Telegram-Bot-Api-Secret-Token` header. The secret stays out of URLs. A fixed-length comparison precedes body parsing and storage access.
+- Authenticated request bodies are limited to 16 KiB. Commands require a fresh private message from the configured chat ID and the same non-bot sender; groups, forwarded commands, edited messages, and other users are ignored.
+- `/deals` reads hourly snapshots, never calls retailers, and never writes the monitor state key. It filters expired offers, omits snapshots older than 24 hours, validates cached conversion rates, and labels per-product timestamps and paused comparisons. Incoming text is matched against fixed commands rather than executed.
+- Command checkpoints are bounded and kept in separate KV keys for 24 hours. A ten-second cooldown and one Telegram webhook connection limit repeat work. Delivery resumes after acknowledged parts; KV is not a distributed lock, so a failed acknowledgement checkpoint can still cause a duplicate.
+
+Telegram documents the [webhook secret header](https://core.telegram.org/bots/api#setwebhook) and [private command menu scopes](https://core.telegram.org/bots/api#botcommandscopechat). The application additionally checks the permitted sender; command-menu visibility alone is not authorization.
+
 - Authenticated requests use fixed, approved HTTPS hostnames. Redirects are returned manually and rejected without forwarding credentials.
 - Streamed JSON, SSE, and HTML bodies are limited to 4 MiB. Fetches have a 20-second timeout and scans a 45-request budget.
 - Purchase links require HTTPS, a standard port, no userinfo or control characters, and an exact approved origin for their source. ITAD links use `itad.link` or `isthereanydeal.com`; direct links use the relevant retailer's domain. Attribution parameters are preserved. Changed provider link formats require review.
@@ -33,7 +40,7 @@ Setup prints a fresh cryptographically random `/start` link. Open that link and 
 
 ## Deployment and trust
 
-Cloudflare stores all three application credentials as Worker secrets. App logs contain counts and known error codes; Workers query strings are redacted. Do not share raw local diagnostic artifacts without checking them. GitHub CI uses read-only repository permissions, pinned official actions, no application secrets, and no deployment step.
+Cloudflare stores the bot token, private chat ID, price-feed API key, and generated webhook secret as Worker secrets. App logs contain counts and known error codes; Workers query strings are redacted. Do not share raw local diagnostic artifacts without checking them. GitHub CI uses read-only repository permissions, pinned official actions, no application secrets, and no deployment step.
 
 The application trusts its OS user, authorized Cloudflare administrators, private KV, Telegram, and price providers. Origin checks cannot independently authenticate an ITAD redirect's eventual destination or provider catalog assignments. KV is not a distributed lock or an adversarially authenticated channel; acknowledged delivery followed by a failed checkpoint may be repeated. Dependency advisory checks cannot exclude undisclosed vulnerabilities.
 

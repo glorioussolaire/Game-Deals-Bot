@@ -34,7 +34,7 @@ Further hardening includes fixed outbound origins, private chat ID bounds, atomi
 
 ## Conclusions and limits
 
-No source input flows into a shell command, evaluated JavaScript, filesystem destination, or arbitrary authenticated fetch destination. Telegram HTML is escaped. Child processes receive argument arrays rather than shell-built credential commands. Production exposes no public control handler. GitHub CI cannot deploy the bot with application credentials.
+No source input flows into a shell command, evaluated JavaScript, filesystem destination, or arbitrary authenticated fetch destination. Telegram HTML is escaped. Child processes receive argument arrays rather than shell-built credential commands. The command extension exposes only an authenticated private Telegram handler; it cannot start scans or change settings. GitHub CI cannot deploy the bot with application credentials.
 
 Trusted local users, administrators, deployment principals, KV access, and providers remain trust boundaries. The bot checks the ITAD redirect origin, not its eventual browser destination or independent SKU proof. KV is eventually consistent and does not guarantee exactly-once delivery. Provider/account penetration testing, formal correctness, and independent uptime monitoring are outside this audit.
 
@@ -47,5 +47,11 @@ The existing production recipient was preserved, not re-enrolled. New challenge 
 The project root and `.dev.vars` were secured after explicit approval, with inherited changes propagating to children. The remediation removes broad-group allow rules, preserves specific user/automation entries and deny rules, and grants the current user/SYSTEM/Administrators full access. Original root/credential ACLs remain in ignored `.data/security-acl-backup.json`. No directory outside the project was changed.
 
 Running `scripts/secure-workspace.ps1` without `-Apply` remains inspection only. The script refuses to overwrite an existing ACL backup. For another installation, review necessary users before applying it: accounts relying only on broad groups may lose access. In a machine shared with untrusted local users, consider replacing credentials after restricting access. Never include credential values in the audit record.
+
+## Private command extension
+
+The later `/deals` extension deliberately replaces the original disabled HTTP route with an authenticated Telegram webhook. A generated 256-bit secret header is checked before parsing or storage access, followed by strict private human sender checks. Bodies are bounded to 16 KiB; stale, forwarded, edited, group, and other-user messages do not invoke commands. Preview URLs remain disabled, and there is no manual scan or configuration endpoint.
+
+Command replies use validated saved prices and separate bounded delivery checkpoints with a 24-hour TTL, leaving monitor baselines untouched. A ten-second cooldown and one webhook connection limit repeated work. Ten added regression tests pass, including restoring already-alerted discounts, preserving hourly silence, rejecting unauthorized traffic, and resuming partial delivery. The original route observations above describe the deployment at the time of the initial audit. See [validation](validation.md) for current deployment checks.
 
 References: [Telegram setup links](https://core.telegram.org/api/links#bot-links), [Telegram update queues](https://core.telegram.org/bots/api#getupdates), [OWASP URL validation](https://cheatsheetseries.owasp.org/cheatsheets/Unvalidated_Redirects_and_Forwards_Cheat_Sheet.html), [OWASP outbound request guidance](https://cheatsheetseries.owasp.org/cheatsheets/Server_Side_Request_Forgery_Prevention_Cheat_Sheet.html).

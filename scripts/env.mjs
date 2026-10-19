@@ -26,7 +26,7 @@ export async function localEnv() {
   try { secrets = parseEnv(await readFile(path.join(root, ".dev.vars"), "utf8")); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
   const env = { ...config.vars, ...secrets };
-  for (const key of [...Object.keys(config.vars), "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "ITAD_API_KEY"]) {
+  for (const key of [...Object.keys(config.vars), "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "ITAD_API_KEY", "TELEGRAM_WEBHOOK_SECRET"]) {
     if (process.env[key]) env[key] = process.env[key];
   }
   env.DEALS_KV = {
