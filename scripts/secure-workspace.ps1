@@ -24,26 +24,30 @@ $backup = @{}
 foreach ($target in $targets) { $backup[$target] = (Get-Acl -LiteralPath $target).Sddl }
 $backup | ConvertTo-Json | Set-Content -LiteralPath $backupPath
 
-$acl = Get-Acl -LiteralPath $workspace
-$acl.SetAccessRuleProtection($true, $true)
-foreach ($rule in @($acl.Access)) {
-  if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -in $broadSids) { $acl.RemoveAccessRuleSpecific($rule) }
+$icacls = Join-Path $env:SystemRoot 'System32\icacls.exe'
+function Invoke-AccessChange {
+  param([string[]]$Arguments)
+  & $icacls @Arguments | Out-Null
+  if ($LASTEXITCODE -ne 0) { throw "Windows permission update failed (exit $LASTEXITCODE). Original ACLs are backed up." }
 }
-$current = [System.Security.Principal.WindowsIdentity]::GetCurrent().User
-foreach ($sid in @($current, [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18'), [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))) {
-  $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($sid, 'FullControl', 'ContainerInherit,ObjectInherit', 'None', 'Allow'))
+$currentSid = [System.Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+$requiredSids = @($currentSid, 'S-1-5-18', 'S-1-5-32-544')
+foreach ($target in $targets) {
+  # Persist inherited entries as explicit before removing grants. Removing
+  # inherited rules from an in-memory .NET ACL does not remove those entries.
+  Invoke-AccessChange -Arguments @($target, '/inheritance:d')
+  # /remove:g removes allow entries only; deny and specific account rules remain.
+  Invoke-AccessChange -Arguments (@($target, '/remove:g') + @($broadSids | ForEach-Object { '*' + $_ }))
+  $inheritance = if ($target -eq $workspace) { '(OI)(CI)' } else { '' }
+  $grants = @($requiredSids | ForEach-Object { '*{0}:{1}F' -f $_, $inheritance })
+  Invoke-AccessChange -Arguments (@($target, '/grant') + $grants)
 }
-# Specific existing automation/user entries are preserved; only broad groups
-# are removed. This does not change ACLs outside the project directory.
-Set-Acl -LiteralPath $workspace -AclObject $acl
-if (Test-Path -LiteralPath $secretFile) {
-  $acl = Get-Acl -LiteralPath $secretFile
-  $acl.SetAccessRuleProtection($true, $true)
-  foreach ($rule in @($acl.Access)) {
-    if ($rule.AccessControlType -eq 'Allow' -and $rule.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -in $broadSids) { $acl.RemoveAccessRuleSpecific($rule) }
+foreach ($target in $targets) {
+  $acl = Get-Acl -LiteralPath $target
+  $remaining = @($acl.Access | Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -in $broadSids })
+  if (-not $acl.AreAccessRulesProtected -or $remaining.Count -ne 0) { throw "Permission verification failed for $target" }
+  foreach ($sid in $requiredSids) {
+    $fullAccess = @($acl.Access | Where-Object { $_.AccessControlType -eq 'Allow' -and $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value -eq $sid -and ($_.FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::FullControl) -eq [System.Security.AccessControl.FileSystemRights]::FullControl })
+    if ($fullAccess.Count -eq 0) { throw "Required account access missing for $target" }
   }
-  foreach ($sid in @($current, [System.Security.Principal.SecurityIdentifier]::new('S-1-5-18'), [System.Security.Principal.SecurityIdentifier]::new('S-1-5-32-544'))) {
-    $acl.AddAccessRule([System.Security.AccessControl.FileSystemAccessRule]::new($sid, 'FullControl', 'Allow'))
-  }
-  Set-Acl -LiteralPath $secretFile -AclObject $acl
 }
