@@ -1,6 +1,6 @@
 # Telegram Wishlist Discount Bot
 
-Status: implemented, with credential setup, authenticated real-price comparisons, Cloudflare deployment, and initial real Telegram delivery validated. Native scheduled execution and deployed CPU usage remain to be observed; see [validation results](validation.md).
+Status: implemented, with private Telegram delivery, live local comparisons, and hourly cloud execution confirmed. The latest cloud check paused comparisons after direct-retailer rate limits. A complete cloud scan and its CPU usage remain unverified; see [validation results](validation.md).
 
 ## User and purpose
 
@@ -21,20 +21,17 @@ One user receives private Telegram alerts about discounted Steam-activatable cop
 
 ## Integrations and broader coverage
 
-The user supplied GG.deals and 2Game Thailand to broaden coverage beyond the original three-store proposal. Target Steam, Fanatical, Gamesplanet, Green Man Gaming, GamersGate, GameBillet, and 2Game. Allow other authorized retailers from the selected feed when exact product identity and explicit Steam DRM can be established. Coverage depends on each product being sold by a retailer and on a functioning data source.
+Compare Steam, Fanatical, Gamesplanet, Green Man Gaming, GamersGate, GameBillet, and 2Game, plus other authorized retailers from the selected feed when exact product identity and explicit Steam DRM can be established. Coverage depends on each product being sold by a retailer and on a functioning data source.
 
 - Steam: wishlist synchronization and native Thai Steam store prices.
 - IsThereAnyDeal: exact Steam-app-ID mapping and batched per-retailer offers for authorized stores, filtered for explicit Steam DRM. Its active shop feed includes Fanatical, Gamesplanet, Green Man Gaming, GamersGate, GameBillet, and Humble Store. Authenticated price responses have passed live validation with a personal API key.
 - Fanatical: first-party catalog queried for Thailand, supplementing the aggregate feed with direct regional evidence, exact Steam IDs, stock, and sale expiry.
 - 2Game Thailand: a direct adapter reads native THB prices for explicitly validated product mappings. The initial mapping is Bannerlord; no full-wishlist 2Game coverage is claimed. 2Game is absent from the active IsThereAnyDeal shop feed and is not covered through that feed.
-- Gamesplanet direct pages: optional supplemental regional evidence and exact-product mappings, rather than mandatory scraping of every retailer for every hourly check.
 - Frankfurter with the ECB provider: dated reference exchange rates for approximate comparisons in THB.
 
 ITAD does not directly cover Thailand: label fallback reference-region offers appropriately and mark Thai activation unverified unless direct evidence resolves it. Preserve the API-reported currency; call a price the merchant's original checkout price only when source evidence supports that description. Never present a converted US reference price as a verified Thai checkout quote.
 
-Use a personal API account only without enabling paid services; onboarding currently describes a regular account with application credentials and no payment prerequisite, but free API access and real response semantics must be verified during setup. Include that setup step explicitly rather than silently reducing coverage to a few direct stores when the key is absent.
-
-GG.deals is useful for store discovery and reference links. Its free API supplies aggregate official-store prices, not a retailer name, DRM, or an individual purchase offer. It cannot by itself establish the cheapest Steam-redeemable listing. Do not scrape its website to fill the missing fields.
+Use a personal IsThereAnyDeal API key and validate live access during setup. A missing or invalid key must fail explicitly rather than silently reducing retailer coverage.
 
 Cheapest means cheapest among the supported offers that meet the selected policy, including clearly labeled region-unverified candidates. Do not advertise a target retailer whose adapter or feed coverage has not been validated.
 
@@ -42,9 +39,9 @@ Cheapest means cheapest among the supported offers that meet the selected policy
 
 Only compare offers with a trustworthy exact-product match, Steam activation, stock, and a valid price. Exclude offers with explicit Thailand purchase or activation restrictions, expired offers, and inaccessible offers.
 
-Q18 confirmed: offers whose Thailand availability or activation cannot be verified are included, with a prominent "Thailand activation unverified" label. Such an offer may be the cheapest reported candidate; do not describe it as confirmed usable in Thailand. This exception applies only to regional availability, not to unknown product identity, unknown DRM, or missing prices.
+Offers whose Thailand availability or activation cannot be verified are included, with a prominent "Thailand activation unverified" label. Such an offer may be the cheapest reported candidate; do not describe it as confirmed usable in Thailand. This exception applies only to regional availability, not to unknown product identity, unknown DRM, or missing prices.
 
-Fanatical's Thailand-filtered catalog result is first-party regional-availability evidence. Gamesplanet requires evaluation of its published country restrictions, rather than trusting a server-location badge. These checks are retailer evidence rather than a guarantee of final checkout or activation.
+Fanatical's Thailand-filtered catalog result is first-party regional-availability evidence rather than a guarantee of final checkout or activation. Feed offers without direct regional evidence remain labeled unverified.
 
 ## Notification behavior
 

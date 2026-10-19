@@ -13,7 +13,7 @@ Private Telegram alerts for discounted Steam games and wishlisted DLC, comparing
 - Clearly marks **Thailand activation unverified** when regional eligibility is unknown. Explicit Thailand restrictions, non-Steam keys, bundles, substitute editions, conditional vouchers, and key resale marketplaces are excluded.
 - Preserves price history on failed reads, retries unsent digests, and reports persistent failures once rather than every hour.
 
-**Validation:** the implementation has passed offline tests, real source comparisons, and an initial Telegram delivery using production storage. Native Cloudflare cron execution and its CPU usage still need to be observed. See [validation results](docs/validation.md) for the scope of these checks.
+**Validation:** all 47 tests pass, and a live preview compared 28 wishlist games. Private Telegram delivery and hourly cloud execution are confirmed. The latest cloud check encountered Fanatical and 2Game rate limits and paused comparisons; a complete cloud scan and its CPU usage remain unverified. See [validation results](docs/validation.md).
 
 ## Activate it
 
@@ -59,7 +59,7 @@ Checks run at **minute 00 of each hour** (also minute 00 in Bangkok). Schedule c
 npm run logs
 ```
 
-Logs contain counts and redacted error codes. Check Cloudflare's dashboard for CPU usage after activation. The bundle and local benchmark are verified locally; **deployed CPU time and private account quotas cannot be verified before account access**. Free-plan limits stop work rather than authorizing a paid upgrade.
+Logs contain counts and redacted error codes. Check Cloudflare's dashboard for CPU usage after activation. Local benchmarks do not establish deployed CPU consumption. Free-plan limits stop work rather than authorizing a paid upgrade.
 
 ## Store coverage and exact matching
 
@@ -76,8 +76,6 @@ npm run add:2game -- 261550 "https://www.2game.com/th-th/products/mount-blade-ii
 ```
 
 This helper requires matching title and publisher, a single stable variant, Steam DRM, and Thai THB context before saving the mapping. It stops on rate limits and never guesses a URL. Review the resulting `config/2game-products.json`, then redeploy. The direct adapter allows eight mapped products per check to reserve the free runtime's request budget; broad feed coverage is independent of that limit. The batched source path has a 200-product safety limit.
-
-GG.deals is useful for discovering retailers. Its free API supplies aggregate prices without per-offer retailer/DRM information, so it cannot replace this bot's Steam-only offer filtering. The bot does not scrape GG.deals or Humble's website.
 
 ## Reliability and privacy
 
@@ -102,7 +100,7 @@ npm run benchmark
 
 The test suite covers matching and exclusions, cheapest-offer selection, price and FX changes, initial/later alerts, removal/re-addition, failures, retry checkpoints, safe formatting, and private access. `check:live` sends no Telegram messages; it explicitly reports authenticated ITAD prices as **not tested** until the key exists. `benchmark` measures local parsing/comparison/formatting, not Cloudflare's deployed CPU accounting.
 
-See [the specification](docs/spec.md), [validation results](docs/validation.md), [source research](docs/integration-research.md), and [project vocabulary](GLOSSARY.md).
+See [the specification](docs/spec.md), [validation results](docs/validation.md), and [project vocabulary](GLOSSARY.md).
 
 Read [the security policy](SECURITY.md) and [application audit](docs/security-audit.md) before using real credentials. Publication checks and local operating-system access checks protect different boundaries.
 

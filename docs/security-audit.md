@@ -29,7 +29,7 @@ Further hardening includes fixed outbound origins, private chat ID bounds, atomi
 - A credential-free authenticated Cloudflare preview ran the actual hardened public adapters: 28 wishlist/Steam comparisons, successful Fanatical and mapped 2Game checks, valid dated FX, ten requests. No Telegram token, ITAD key, production KV, or scheduler was attached. The preview was stopped.
 - Live API reads confirmed three `secret_text` bindings, query redaction enabled, public/preview HTTP routes disabled, no bot custom domain, zero account zones that could add a zone route, and sole schedule `0 * * * *`.
 - Telegram read-only checks confirmed the configured target is a private chat and no incoming webhook is configured. No messages were sent by these checks. The Wrangler login file had no broad-group allow rules.
-- Existing production state passed the new reader without reset or writes. A queued monitoring notice remains pending scheduled delivery; the configured recipient and history were preserved.
+- Existing production state passed the new reader without reset or writes. A later read after the 07:00 UTC scheduled run showed no pending messages. The configured recipient and history were preserved.
 - Staged-source checks found no actual credentials or personal deployment identifiers. Local diagnostic artifacts checked during the audit contained no actual credentials. Real config, credentials, state, logs, dependencies, and output remain ignored; there were no older commits containing tracked secrets.
 
 ## Conclusions and limits
@@ -38,7 +38,7 @@ No source input flows into a shell command, evaluated JavaScript, filesystem des
 
 Trusted local users, administrators, deployment principals, KV access, and providers remain trust boundaries. The bot checks the ITAD redirect origin, not its eventual browser destination or independent SKU proof. KV is eventually consistent and does not guarantee exactly-once delivery. Provider/account penetration testing, formal correctness, and independent uptime monitoring are outside this audit.
 
-The observability query API returned HTTP 403 with the current login; broader permissions were not requested. Complete-scan production CPU and a successful scheduled scan after the fix still need observation. Preview checks do not prove the free-plan CPU budget.
+The observability query API returned HTTP 403 with the current login; broader permissions were not requested. Hourly execution after the fix was confirmed at 07:00 UTC, but Fanatical and 2Game returned HTTP 429 and comparisons paused. A complete cloud scan and its CPU consumption remain unverified. Preview checks do not prove the free-plan CPU budget.
 
 The existing production recipient was preserved, not re-enrolled. New challenge pairing applies at the next setup. Ownership can be reconfirmed by rerunning configuration after securing the local workspace. No evidence of actual credential leakage or account compromise was found; broad local access cannot prove retrospectively that no credential was read.
 
