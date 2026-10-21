@@ -120,7 +120,11 @@ export async function collect(http, env, state, now) {
     }
   }
   if (itad.gaps.length) warnings.push(`${itad.gaps.length} products lack unambiguous feed identity; direct sources only`);
-  const fx = await loadFx(http, games.flatMap(game => game.offers.map(offer => offer.currency)), state.fx, now);
+  // Both observations use today's rates. Keep prior currencies until their
+  // replacement baseline commits, including when a retailer stops an offer.
+  const currencies = games.flatMap(game => [...game.offers, ...(state.entries[game.appid]?.offers ?? [])]
+    .map(offer => offer.currency));
+  const fx = await loadFx(http, currencies, state.fx, now);
   const plan = planAlerts(games, state.entries, fx, now);
   if (plan.skipped.length) warnings.push(`${plan.skipped.length} product comparisons paused`);
   if (plan.skipped.some(item => item.reason.startsWith("Missing reference rate"))) failures.fx = "missing_currency_rates";

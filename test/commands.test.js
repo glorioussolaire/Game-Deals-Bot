@@ -68,11 +68,11 @@ test("HTTP never accepts commands or touches secrets, state or Telegram", async 
   }
 });
 
-test("only fresh commands from the configured private human sender are accepted", async () => {
+test("commands from other senders, forwarded messages and invalid dates are rejected before KV access", async () => {
   const c = await commandFixture();
   for (const changed of [{ chat: { id: -123456, type: "group" } }, { chat: { id: 999999, type: "private" } },
     { from: { id: 999999, is_bot: false } }, { from: { id: 123456, is_bot: true } },
-    { forward_origin: { type: "user" } }, { via_bot: { id: 12 } }, { date: now / 1000 - 601 },
+    { forward_origin: { type: "user" } }, { via_bot: { id: 12 } }, { date: -1 },
     { date: now / 1000 + 61 }, { text: "/deals reset" }, { text: "ordinary text" }]) {
     const value = update();
     Object.assign(value.message, changed);
@@ -81,6 +81,23 @@ test("only fresh commands from the configured private human sender are accepted"
   await runCommand({ update_id: 1, edited_message: update().message }, c.env, c.options);
   assert.equal(c.reads.length, 0);
   assert.equal(c.f.controls.attempts, 0);
+});
+
+test("stale unseen commands cannot create jobs and other senders cannot resume saved jobs", async () => {
+  const c = await commandFixture();
+  const stale = update(10, now - 601000);
+  const p = pollingFixture(c, [stale]);
+  const result = await pollTelegram(c.env, p.options);
+  assert.equal(result.commands, 0);
+  assert.deepEqual(c.reads, [COMMAND_PREFIX + "10"]);
+  assert.equal(c.extra.size, 0);
+  assert.equal(c.f.controls.sent.length, 0);
+  assert.equal(p.calls.at(-1).offset, 11);
+  c.extra.set(COMMAND_PREFIX + "10", JSON.stringify({ messages: ["private response"], cursor: 0 }));
+  stale.message.from.id = stale.message.chat.id = 999999;
+  assert.equal(await runCommand(stale, c.env, c.options), false);
+  assert.deepEqual(c.reads, [COMMAND_PREFIX + "10"], "Wrong senders must be rejected before reading a checkpoint");
+  assert.equal(c.f.controls.sent.length, 0);
 });
 
 test("/start and /help explain restoration and a short cooldown limits duplicate requests", async () => {
@@ -252,6 +269,42 @@ test("failed acknowledgement retries do not resend a checkpointed response", asy
   await pollTelegram(c.env, p.options);
   assert.equal(c.f.controls.sent.length, 1);
   assert.equal(p.calls.at(-1).offset, 2);
+});
+
+test("commands sent thirty seconds apart both receive replies when queued in one poll", async () => {
+  const c = await commandFixture();
+  const before = JSON.stringify(c.f.state);
+  const p = pollingFixture(c, [update(100, now - 45000, "/help"), update(101, now - 15000, "/deals")]);
+  const result = await pollTelegram(c.env, p.options);
+  assert.equal(result.commands, 2);
+  assert.equal(c.f.controls.sent.length, 2);
+  assert.match(c.f.controls.sent[0], /Send \/deals/);
+  assert.match(c.f.controls.sent[1], /All wishlist discounts/);
+  assert.equal(p.calls.at(-1).offset, 102);
+  assert.equal(JSON.stringify(c.f.state), before);
+});
+
+test("an accepted multipart command resumes after an eleven-minute outage", async () => {
+  const c = await commandFixture();
+  const state = c.f.state;
+  const sample = state.entries[261550];
+  state.entries = Object.fromEntries(Array.from({ length: 45 }, (_, i) => [String(1000 + i),
+    { ...sample, title: "Wishlist game " + i + " " + "x".repeat(100) }]));
+  c.f.state = state;
+  const before = JSON.stringify(state);
+  c.f.controls.failSend = 2;
+  const p = pollingFixture(c, [update()]);
+  await assert.rejects(pollTelegram(c.env, p.options), /HTTP 429/);
+  assert.equal(p.calls.length, 1, "Failed commands must stay unacknowledged");
+  assert.equal(c.f.controls.sent.length, 1);
+  const firstPart = c.f.controls.sent[0];
+  await pollTelegram(c.env, { ...p.options, now: now + 11 * 60000 });
+  const job = JSON.parse(c.extra.get(COMMAND_PREFIX + "1"));
+  assert.equal(job.cursor, job.messages.length);
+  assert.ok(job.messages.length > 1);
+  assert.equal(c.f.controls.sent.filter(text => text === firstPart).length, 1);
+  assert.equal(p.calls.at(-1).offset, 2);
+  assert.equal(JSON.stringify(c.f.state), before);
 });
 
 test("the minute schedule only polls Telegram; unknown schedules do no work", async () => {

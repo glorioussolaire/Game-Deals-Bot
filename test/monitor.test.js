@@ -29,6 +29,36 @@ test("preview neither sends nor advances alert history", async () => {
   assert.equal(f.controls.sent.length, 0);
 });
 
+test("FX refresh retains baseline currencies until the new comparison commits", async () => {
+  const f = fixture();
+  await runMonitor(f.env, { fetcher: f.fetcher, now });
+  const state = f.state;
+  const old = state.entries[261550].offers.find(offer => offer.source === "itad");
+  state.entries[261550].offers = [{ ...old, currency: "GBP" }];
+  state.entries[999999] = { title: "Removed game", offers: [{ ...old, currency: "JPY" }], checkedAt: new Date(now).toISOString() };
+  state.fx = { ...state.fx, fetchedAt: now - 86400001, rates: { ...state.fx.rates, GBP: 1, JPY: 100 } };
+  f.state = state;
+  const requests = [];
+  const fetcher = async (url, init) => {
+    if (new URL(url).hostname !== "api.frankfurter.dev") return f.fetcher(url, init);
+    const quotes = new URL(url).searchParams.get("quotes").split(",");
+    requests.push(quotes);
+    return Response.json(quotes.map(quote => ({ base: "EUR", quote, rate: quote === "THB" ? 33 : 1, date: "2026-10-16" })));
+  };
+  let result = await runMonitor(f.env, { fetcher, now: now + 3600000 });
+  assert.equal(result.compared, 2);
+  assert.equal(result.alertCount, 0, "A currency disappearing at the same equivalent price is not a new discount");
+  assert.deepEqual(requests[0], ["GBP", "THB", "USD"]);
+  assert.equal(f.state.entries[999999], undefined, "Removed games must not keep unnecessary currencies alive");
+  assert.ok(f.state.entries[261550].offers.every(offer => offer.currency !== "GBP"));
+  f.controls.price = 19;
+  result = await runMonitor(f.env, { fetcher, now: now + 7200000 });
+  assert.equal(result.compared, 2);
+  assert.equal(result.alertCount, 2, "Further reductions must remain observable after the currency change");
+  await runMonitor(f.env, { fetcher, now: now + 26 * 3600000 });
+  assert.deepEqual(requests[1], ["THB", "USD"], "Retired currencies can leave the next refresh after comparison succeeds");
+});
+
 test("failed delivery retains a resumable outbox and never consumes unsent alerts", async () => {
   const f = fixture();
   f.controls.failSend = 1;

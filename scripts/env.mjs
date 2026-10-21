@@ -20,18 +20,18 @@ export function steamIdFromInput(value) {
   return value.trim().match(/^(?:https:\/\/store\.steampowered\.com\/wishlist\/profiles\/)?(\d{17})\/?$/)?.[1] ?? null;
 }
 
-export async function localEnv() {
-  const config = await localConfig();
+export async function localEnv(directory = root, environment = process.env) {
+  const config = await localConfig(directory);
   let secrets = {};
-  try { secrets = parseEnv(await readFile(path.join(root, ".dev.vars"), "utf8")); }
+  try { secrets = parseEnv(await readFile(path.join(directory, ".dev.vars"), "utf8")); }
   catch (error) { if (error.code !== "ENOENT") throw error; }
   const env = { ...config.vars, ...secrets };
   for (const key of [...Object.keys(config.vars), "TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "ITAD_API_KEY", "TELEGRAM_WEBHOOK_SECRET"]) {
-    if (process.env[key]) env[key] = process.env[key];
+    if (environment[key]) env[key] = environment[key];
   }
   env.DEALS_KV = {
-    async get() { try { return await readFile(path.join(root, ".data", "local-state.json"), "utf8"); } catch (error) { if (error.code === "ENOENT") return null; throw error; } },
-    async put(_key, value) { await mkdir(path.join(root, ".data"), { recursive: true }); await writeFile(path.join(root, ".data", "local-state.json"), value, { mode: 0o600 }); }
+    async get() { try { return await readFile(path.join(directory, ".data", "local-state.json"), "utf8"); } catch (error) { if (error.code === "ENOENT") return null; throw error; } },
+    async put(_key, value) { await mkdir(path.join(directory, ".data"), { recursive: true }); await writeFile(path.join(directory, ".data", "local-state.json"), value, { mode: 0o600 }); }
   };
   return env;
 }

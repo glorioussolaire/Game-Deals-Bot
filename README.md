@@ -14,7 +14,7 @@ Private Telegram alerts for discounted Steam games and wishlisted DLC, comparing
 - Clearly marks **Thailand activation unverified** when regional eligibility is unknown. Explicit Thailand restrictions, non-Steam keys, bundles, substitute editions, conditional vouchers, and key resale marketplaces are excluded.
 - Preserves price history on failed reads, retries unsent digests, and reports persistent failures once rather than every hour.
 
-**Validation:** all 63 tests pass, including private command authorization, saved-list restoration, polling acknowledgements, and delivery retries. Hourly cloud execution and private delivery are confirmed; retailer rate limits can pause comparisons.
+**Validation:** all 70 tests pass, including private command authorization, saved-list restoration, queued commands, outage retries, exchange-rate transitions, and deployment credential consistency. Hourly cloud execution and private delivery are confirmed; retailer rate limits can pause comparisons.
 
 ## Activate it
 
@@ -56,6 +56,8 @@ npm run deploy
 
 Choose a **Workers Free** account and verify its email address. New accounts also need their initial Workers setup. Deployment validates the live price feed, creates a KV namespace if needed, and publishes code and secrets together. It disables workers.dev, preview URLs, and configured HTTP routes. It registers `/deals` and `/help` for your private chat and removes any old Telegram webhook while preserving queued updates. Commands are fetched directly from Telegram every minute, so replies normally take up to one minute. No script upgrades your account to a paid plan. `.dev.vars` is uploaded as encrypted Worker secrets, not bundled into source.
 
+Environment-variable overrides take precedence over saved values. Deployment uses the same resolved credentials for validation, Worker secrets, and Telegram command setup, and applies resolved application variables to the deployed configuration. Its temporary credential snapshot stays inside ignored `.data/` with private file protections and is removed after success or failure. Saved `.dev.vars` credentials are not overwritten by overrides.
+
 Checks run at **minute 00 of each hour** (also minute 00 in Bangkok). Schedule changes may take about 15 minutes to propagate. Retailer data and free scheduling can lag; one-hour delivery is a target, not a guarantee. The first complete check sends existing qualifying discounts.
 
 ```powershell
@@ -70,7 +72,7 @@ Send **`/deals`** to the bot, or select it from the command menu. It returns the
 
 This command reads saved prices rather than polling retailers again. Each game shows its comparison time; paused products retain their earlier timestamp, and prices older than 24 hours are omitted with a warning. Expired offers and unusable exchange rates are excluded. Missing saved data produces an explicit message. Store prices can change before the next hourly check.
 
-Only your configured private Telegram account can request the list. Commands are checked every minute; requests processed within ten seconds of another new command are ignored. Command delivery checkpoints use separate KV keys and never change automatic alert baselines. Standard hourly messages continue to contain only new or cheaper discounts.
+Only your configured private Telegram account can request the list. Commands are checked every minute; commands sent less than ten seconds apart are ignored. Commands sent farther apart can share one poll and still receive their replies. New commands must be no more than ten minutes old; accepted responses can resume from saved checkpoints after a longer outage. Command delivery checkpoints use separate KV keys and never change automatic alert baselines. Standard hourly messages continue to contain only new or cheaper discounts.
 
 ## Store coverage and exact matching
 
@@ -98,7 +100,7 @@ This helper requires matching title and publisher, a single stable variant, Stea
 - Production state writes are serialized with at least 1.1 seconds after each completed write, respecting KV's one-write-per-second limit for the same key.
 - Only the hourly `0 * * * *` cron scans stores. The separate `* * * * *` cron polls commands and reads saved prices. `/deals` does not trigger another scan. Do not run a second production scheduler or Telegram update consumer against the same bot. The local preview uses no delivery history writes; `npm run send` uses separate local state and is for deliberate local testing, not a second scheduler.
 - Each minute poll reads at most 100 updates. Empty polls make no KV reads or writes; ignored users also cause no KV access. Telegram retains unconfirmed updates until processing succeeds, and separate delivery checkpoints prevent ordinary retries from resending completed parts. Scheduling and Telegram outages can delay commands.
-- Rates are cached daily, retain their observation date, and can be reused for up to seven days through outages/holidays. Missing conversion data pauses affected comparisons.
+- Rates are cached daily, retain their observation date, and can be reused for up to seven days through outages/holidays. Refreshes retain currencies needed by previous observations until their replacements commit. Missing conversion data pauses affected comparisons.
 
 ## Security
 
@@ -126,7 +128,7 @@ There is no public command endpoint: workers.dev, preview URLs, and configured H
 
 The minute cron fetches updates over fixed-origin HTTPS using the bot token. Commands require a fresh private message from the configured human sender. Forwarded commands, edited messages, groups, and other users are ignored before KV access. Command text selects fixed actions; it is never executed. Telegram response sizes and per-poll requests are bounded.
 
-Telegram documents [update acknowledgement and queue retention](https://core.telegram.org/bots/api#getupdates) and [private command menu scopes](https://core.telegram.org/bots/api#botcommandscopechat). Updates are acknowledged only after accepted commands finish. Updates returned during acknowledgement stay queued for the next poll. Command-menu visibility alone is not authorization. Command checkpoints are bounded and retained for 24 hours in separate KV keys; a ten-second processing cooldown limits repeat work. A Telegram message flood could delay command processing, so use a dedicated personal bot.
+Telegram documents [update acknowledgement and queue retention](https://core.telegram.org/bots/api#getupdates) and [private command menu scopes](https://core.telegram.org/bots/api#botcommandscopechat). Updates are acknowledged only after accepted commands finish. Updates returned during acknowledgement stay queued for the next poll. Command-menu visibility alone is not authorization. Command checkpoints are bounded and retained for 24 hours in separate KV keys; a cooldown based on Telegram message timestamps limits repeat work. Accepted jobs keep their checkpoints across the ten-minute admission cutoff; sender and message-type authorization still apply on every retry. A Telegram message flood could delay command processing, so use a dedicated personal bot.
 
 ### External data and trust
 
